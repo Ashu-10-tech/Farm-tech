@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Company Dashboard - Farm Tech</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="auth-styles.css">
+</head>
+<body>
+    <header class="header">
+        <a href="index.html" class="site-title">🌳 FARM TECH</a>
+        <nav class="nav-bar">
+            <span id="welcome-message" style="color: var(--primary-color); font-weight: 600;">Welcome!</span>
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="#" id="logout-button" class="nav-link"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="dashboard-header">
+                <h1><i class="fas fa-industry"></i> Company Dashboard</h1>
+                <p>Post new tenders and manage your active contract farming agreements.</p>
+            </div>
+
+            <div class="dashboard-grid company-grid">
+                <div class="section-card">
+                    <h2><i class="fas fa-file-contract"></i> My Posted Tenders</h2>
+                    <div id="posted-tenders-list" class="tender-list">
+                        <p style="text-align: center; color: var(--secondary-color);">Loading tenders...</p>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="stat-box">
+                        <h3 id="total-tenders-count">...</h3>
+                        <p>Total Tenders Posted</p>
+                    </div>
+
+                    <div class="stat-box" style="background-color: var(--secondary-color);">
+                        <h3 id="active-value">...</h3>
+                        <p>Total Value of Active Contracts</p>
+                    </div>
+
+                    <div class="section-card">
+                        <h2><i class="fas fa-bullhorn"></i> Post New Tender</h2>
+                        <form id="post-tender-form">
+                            <div class="form-group">
+                                <label for="cropName">Crop Name</label>
+                                <input type="text" id="cropName" name="cropName" class="input-field" placeholder="e.g., Basmati Rice" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requiredQuantity">Quantity Required (e.g., 500 Quintals)</label>
+                                <input type="text" id="requiredQuantity" name="requiredQuantity" class="input-field" placeholder="e.g., 500 Quintals / 10 Acres" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="contractDuration">Contract Duration</label>
+                                <input type="text" id="contractDuration" name="contractDuration" class="input-field" placeholder="e.g., 6 Months / 3 Years" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="unitPrice">Unit Price (₹)</label>
+                                <input type="text" id="unitPrice" name="unitPrice" class="input-field" placeholder="e.g., ₹2500 per Quintal" required>
+                            </div>
+                            <button type="submit" class="btn btn-success" style="width: 100%;">
+                                <i class="fas fa-paper-plane"></i> Post Tender
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 🌾 Farm Tech. All rights reserved.</p>
+    </footer>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+
+        // --- AUTH & UTILITIES ---
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem('token');
+            return {
+                'Content-Type': 'application/json',
+                'x-auth-token': token
+            };
+        }
+
+        async function fetchAuthenticated(url, method = 'GET', body = null) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Session expired. Please log in.');
+                localStorage.clear();
+                window.location.href = 'login.html';
+                return null;
+            }
+
+            try {
+                const options = {
+                    method,
+                    headers: getAuthHeaders(),
+                    body: body ? JSON.stringify(body) : null
+                };
+                const response = await fetch(url, options);
+                
+                if (response.status === 401 || response.status === 403) {
+                    alert('Access denied. Logging out.');
+                    localStorage.clear();
+                    window.location.href = 'login.html';
+                    return null;
+                }
+                 if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.msg || 'Server error');
+                }
+                return response.json();
+
+            } catch (error) {
+                console.error('Fetch Error:', error.message);
+                alert('Error connecting to backend: ' + error.message);
+                return null;
+            }
+        }
+
+        // --- DASHBOARD FUNCTIONS ---
+
+        function renderPostedTenders(tenders) {
+            const list = document.getElementById('posted-tenders-list');
+            list.innerHTML = '';
+            let totalValue = 0;
+
+            if (tenders && tenders.length > 0) {
+                document.getElementById('total-tenders-count').textContent = tenders.length;
+                
+                tenders.forEach(tender => {
+                    let statusTag;
+                    let actionsHtml = '';
+                    
+                    const price = parseFloat(tender.unitPrice.replace(/[^0-9.]/g, '')) || 0;
+                    const quantity = parseFloat(tender.requiredQuantity.replace(/[^0-9.]/g, '')) || 1;
+                    
+                    if (tender.status === 'open') {
+                        statusTag = `<span class="tag tag-open">Open</span>`;
+                        actionsHtml = `<a href="#" class="btn btn-danger" data-tender-id="${tender._id}">Cancel Tender</a>`;
+                    } else if (tender.status === 'accepted') {
+                        statusTag = `<span class="tag tag-accepted">Accepted by ${tender.farmerId ? tender.farmerId.username : 'Farmer'}</span>`;
+                        actionsHtml = `<button class="btn btn-success" data-tender-id="${tender._id}" data-action="complete">Mark Complete</button>`;
+                        totalValue += price * quantity;
+                    } else if (tender.status === 'completed') {
+                        statusTag = `<span class="tag tag-completed">Completed</span>`;
+                        actionsHtml = `<a href="#" class="btn btn-primary">Review</a>`;
+                    }
+
+                    list.innerHTML += `
+                        <div class="tender-item">
+                            <div class="tender-info">
+                                <h3>${tender.cropName} (Tender ID: ${tender._id.substring(0, 4)})</h3>
+                                <p>${tender.requiredQuantity} | Price: ${tender.unitPrice}</p>
+                                <p>Status: ${statusTag}</p>
+                            </div>
+                            <div class="tender-actions">
+                                ${actionsHtml}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                document.getElementById('active-value').textContent = `₹ ${totalValue.toLocaleString()}`;
+
+                // Add event listeners for actions
+                document.querySelectorAll('[data-action="complete"]').forEach(button => {
+                    button.addEventListener('click', handleTenderAction);
+                });
+                document.querySelectorAll('.btn-danger').forEach(button => {
+                    button.addEventListener('click', handleTenderAction);
+                });
+
+            } else {
+                list.innerHTML = '<p style="text-align: center;">No tenders posted yet.</p>';
+                document.getElementById('total-tenders-count').textContent = 0;
+                document.getElementById('active-value').textContent = `₹ 0`;
+            }
+        }
+        
+        async function handleTenderAction(e) {
+            e.preventDefault();
+            const button = e.target.closest('button') || e.target.closest('a');
+            const tenderId = button.getAttribute('data-tender-id');
+            const action = button.getAttribute('data-action') || (button.classList.contains('btn-danger') ? 'cancel' : '');
+            
+            if (action === 'complete') {
+                 if (!confirm('Are you sure you want to mark this contract as COMPLETED?')) return;
+                 await fetchAuthenticated(`${API_URL}/api/tenders/complete/${tenderId}`, 'PUT');
+            } else if (action === 'cancel') {
+                if (!confirm('Are you sure you want to CANCEL this open tender?')) return;
+                // NOTE: No backend route for cancellation was defined, so this is for UI effect.
+                alert('Tender cancellation simulated. You would need a PUT/DELETE route for this.');
+            }
+            loadDashboardData();
+        }
+
+        async function handlePostTender(e) {
+            e.preventDefault();
+            const form = e.target;
+            const button = form.querySelector('button[type="submit"]');
+
+            const formData = {
+                cropName: form.cropName.value,
+                requiredQuantity: form.requiredQuantity.value,
+                contractDuration: form.contractDuration.value,
+                unitPrice: form.unitPrice.value
+            };
+
+            button.disabled = true;
+
+            const result = await fetchAuthenticated(`${API_URL}/api/tenders`, 'POST', formData);
+
+            if (result) {
+                alert(`Tender for ${result.cropName} posted successfully!`);
+                form.reset();
+                loadDashboardData(); // Refresh list on success
+            }
+            button.disabled = false;
+        }
+
+        async function loadDashboardData() {
+            const postedTenders = await fetchAuthenticated(`${API_URL}/api/tenders/mycontracts`);
+            renderPostedTenders(postedTenders);
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const username = localStorage.getItem('username');
+            if (username) {
+                document.getElementById('welcome-message').textContent = `Welcome, ${username}!`;
+            } else {
+                document.getElementById('welcome-message').textContent = `Welcome, Company!`;
+            }
+
+            loadDashboardData();
+
+            document.getElementById('post-tender-form').addEventListener('submit', handlePostTender);
+
+            document.getElementById('logout-button').addEventListener('click', (e) => {
+                e.preventDefault();
+                localStorage.clear();
+                window.location.href = 'login.html';
+            });
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Farmer Dashboard - Farm Tech</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="auth-styles.css">
+</head>
+<body>
+    <header class="header">
+        <a href="index.html" class="site-title">🌾 FARM TECH</a>
+        <nav class="nav-bar">
+            <span id="welcome-message" style="color: var(--primary-color); font-weight: 600;">Welcome!</span>
+            <a href="index.html" class="nav-link">Home</a>
+            <a href="#" id="logout-button" class="nav-link"><i class="fas fa-sign-out-alt"></i> Logout</a>
+        </nav>
+    </header>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="dashboard-header">
+                <h1><i class="fas fa-tractor"></i> Farmer Dashboard</h1>
+                <p>Manage your accepted contracts and explore new tender opportunities.</p>
+            </div>
+
+            <div class="dashboard-grid farmer-grid">
+                <div>
+                    <div class="stat-box">
+                        <h3 id="total-value">...</h3>
+                        <p>Total Contract Value</p>
+                    </div>
+
+                    <div class="stat-box" style="background-color: var(--secondary-color);">
+                        <h3 id="active-contracts-count">...</h3>
+                        <p>Active Contracts</p>
+                    </div>
+
+                    <div class="section-card">
+                        <h2><i class="fas fa-check-circle"></i> My Accepted Contracts</h2>
+                        <div id="accepted-contracts-list" class="tender-list">
+                            <p style="text-align: center; color: var(--secondary-color);">Loading contracts...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section-card">
+                    <h2><i class="fas fa-search-dollar"></i> Available Tenders</h2>
+                    <div id="available-tenders-list" class="tender-list">
+                        <p style="text-align: center; color: var(--secondary-color);">Loading tenders...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 🌾 Farm Tech. All rights reserved.</p>
+    </footer>
+
+    <script>
+        const API_URL = 'http://localhost:5000';
+
+        // --- AUTH & UTILITIES ---
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem('token');
+            return {
+                'Content-Type': 'application/json',
+                'x-auth-token': token
+            };
+        }
+
+        async function fetchAuthenticated(url, method = 'GET', body = null) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                alert('Session expired. Please log in.');
+                localStorage.clear();
+                window.location.href = 'login.html';
+                return null;
+            }
+
+            try {
+                const options = {
+                    method,
+                    headers: getAuthHeaders(),
+                    body: body ? JSON.stringify(body) : null
+                };
+                const response = await fetch(url, options);
+                
+                if (response.status === 401 || response.status === 403) {
+                    alert('Access denied. Logging out.');
+                    localStorage.clear();
+                    window.location.href = 'login.html';
+                    return null;
+                }
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.msg || 'Server error');
+                }
+                return response.json();
+
+            } catch (error) {
+                console.error('Fetch Error:', error.message);
+                alert('Error connecting to backend: ' + error.message);
+                return null;
+            }
+        }
+
+        // --- DASHBOARD FUNCTIONS ---
+
+        function renderAcceptedContracts(contracts) {
+            const list = document.getElementById('accepted-contracts-list');
+            list.innerHTML = '';
+            let totalValue = 0;
+
+            if (contracts && contracts.length > 0) {
+                contracts.forEach(contract => {
+                    // Simple logic to calculate value (needs refinement in a real app)
+                    const price = parseFloat(contract.unitPrice.replace(/[^0-9.]/g, '')) || 0;
+                    const quantity = parseFloat(contract.requiredQuantity.replace(/[^0-9.]/g, '')) || 1;
+                    totalValue += price * quantity;
+                    
+                    const statusClass = contract.status === 'accepted' ? 'tag-accepted' : 'tag-completed';
+
+                    list.innerHTML += `
+                        <div class="tender-item">
+                            <div class="tender-info">
+                                <h3>${contract.cropName} (ID: ${contract._id.substring(0, 4)})</h3>
+                                <p>Company: ${contract.companyId.username} | Qty: ${contract.requiredQuantity}</p>
+                            </div>
+                            <span class="tag ${statusClass}">${contract.status}</span>
+                        </div>
+                    `;
+                });
+                document.getElementById('total-value').textContent = `₹ ${totalValue.toLocaleString()}`;
+                document.getElementById('active-contracts-count').textContent = contracts.filter(c => c.status === 'accepted').length;
+            } else {
+                list.innerHTML = '<p style="text-align: center;">No accepted contracts yet.</p>';
+                document.getElementById('total-value').textContent = `₹ 0`;
+                document.getElementById('active-contracts-count').textContent = 0;
+            }
+        }
+
+        function renderOpenTenders(tenders) {
+            const list = document.getElementById('available-tenders-list');
+            list.innerHTML = '';
+
+            if (tenders && tenders.length > 0) {
+                tenders.forEach(tender => {
+                    const companyName = tender.companyId.profile?.companyName || tender.companyId.username;
+                    
+                    list.innerHTML += `
+                        <div class="tender-item">
+                            <div class="tender-info">
+                                <h3>${tender.cropName}</h3>
+                                <p>**Company:** ${companyName} | **Qty:** ${tender.requiredQuantity} | **Price:** ${tender.unitPrice}</p>
+                            </div>
+                            <button class="btn btn-success" data-tender-id="${tender._id}">Accept Tender</button>
+                        </div>
+                    `;
+                });
+                document.querySelectorAll('.btn-success').forEach(button => {
+                    button.addEventListener('click', handleAcceptTender);
+                });
+            } else {
+                list.innerHTML = '<p style="text-align: center; color: var(--secondary-color);">No open tenders available at this time.</p>';
+            }
+        }
+
+        async function handleAcceptTender(e) {
+            e.preventDefault();
+            const tenderId = e.target.getAttribute('data-tender-id');
+
+            if (!confirm('Are you sure you want to accept this tender? This action is binding.')) {
+                return;
+            }
+            
+            e.target.disabled = true;
+
+            const result = await fetchAuthenticated(`${API_URL}/api/tenders/accept/${tenderId}`, 'PUT');
+
+            if (result) {
+                alert(`Tender accepted for ${result.cropName}! It is now in your accepted contracts.`);
+                loadDashboardData(); // Refresh data on success
+            }
+            e.target.disabled = false;
+        }
+
+
+        async function loadDashboardData() {
+            // Load My Contracts
+            const acceptedContracts = await fetchAuthenticated(`${API_URL}/api/tenders/mycontracts`);
+            renderAcceptedContracts(acceptedContracts);
+
+            // Load Open Tenders
+            const openTenders = await fetchAuthenticated(`${API_URL}/api/tenders/open`);
+            renderOpenTenders(openTenders);
+        }
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            const username = localStorage.getItem('username');
+            if (username) {
+                document.getElementById('welcome-message').textContent = `Welcome, ${username}!`;
+            } else {
+                 document.getElementById('welcome-message').textContent = `Welcome, Farmer!`;
+            }
+
+            loadDashboardData();
+
+            document.getElementById('logout-button').addEventListener('click', (e) => {
+                e.preventDefault();
+                localStorage.clear();
+                window.location.href = 'login.html';
+            });
+        });
+    </script>
+</body>
+</html>
