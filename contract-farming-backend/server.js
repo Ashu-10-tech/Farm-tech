@@ -2,7 +2,7 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const cors =  require('cors'); // Use const cors = require('cors')
+const cors = require('cors'); // Correct way to import cors
 
 dotenv.config();
 const app = express();
