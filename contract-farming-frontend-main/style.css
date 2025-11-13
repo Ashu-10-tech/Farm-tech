@@ -567,9 +567,11 @@ footer {
 }
 
 @media (max-width: 480px) {
+
+    /* Reduce hero height on very small screens for better mobile UX */
     .hero{
-        height: 60vh;
-        min-height: 400px;
+        height: 55vh;
+        min-height: 320px;
     }
     .hero-content h1 {
         font-size: 1.8rem;
